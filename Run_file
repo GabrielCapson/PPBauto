@@ -1,0 +1,47 @@
+%% Runfile for PPB_auto model
+
+%% Run ode solver
+data = csvread('dynamic_Influent_150rpm_pulse2.csv'); 
+data_t0 = csvread('initial_data_150rpm_2.csv');
+tu = data(:,1); % Time (t) to which raw input (u) is mapped
+%----------------------------------------------
+%% Assign variable names to influent data
+Vliq = 0.197; % (L)
+Vgas = 0.388;
+
+% Order in input file: Time, ...
+Sic = data(:,2);
+Sh2 = data(:,3);
+Sin = data(:,4);
+Sip = data(:,5);
+XPB = data(:,6);
+XC = data(:,7);
+H2_gas = data(:,8);
+CO2_gas = data(:,13);
+HCO3_ = data(:,14);
+NH3 = data(:,15);
+H2PO4_ = data(:,16);
+
+% Flowrates
+QinVec = data(:,9);
+QinG = data(:,10);
+H2inG = data(:,11);
+QoutG = data(:,12);
+
+
+% Order of vars in model (u); %QinVec = u(8)
+feed = [Sic, Sh2, Sin, Sip, XPB, XC, H2_gas, QinVec, QinG, H2inG, QoutG,...
+    CO2_gas, HCO3_, NH3, H2PO4_];
+
+% Duration of experiment/simulation (d)
+tvec = [0 2.1526];
+
+%% Run ode solver
+options = odeset('RelTol',4e-9,'AbsTol',4e-9);
+
+%solve ODE
+tic
+[t,y]=ode15s(@(t,y)PPB_auto_pH(t,y,tu,feed,Vliq,Vgas),tvec,data_t0(1,1:11),options);
+toc
+
+plots_PPB_auto
