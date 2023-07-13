@@ -1,0 +1,147 @@
+%% PLOTFILE for the PPB auto model
+
+%Load experimental results
+%[t,XPB,H2_gas]
+data_exp = csvread('150rpm_kinetic2.csv');
+data_exp_pH = csvread('150rpm_pH2.csv');
+texp = data_exp(:,1);
+XPBexp = data_exp(:,6);
+H2_gas_exp = data_exp(:,7);
+
+figure(1)
+    plot(texp,XPBexp,'o')
+    hold on;
+    plot(t,y(:,5),'r');
+    hold off;
+    grid;
+    title('Experimental');
+    ylabel('XPB (g COD/m3)');
+    xlabel('Time (d)');
+
+figure(2)
+    subplot(2,1,1)
+    plot(texp,H2_gas_exp,'o')
+    hold on;
+    plot(t,y(:,7),'r');
+    hold off;
+    grid;
+    ylabel('H_2 gas (M)');
+    xlabel('Time (d)');
+    ylim([0 0.06]);
+    subplot(2,1,2)
+    plot(t,y(:,8),'r');
+    hold off;
+    grid;
+    ylabel('CO_2 gas (M)');
+    xlabel('Time (d)');
+    
+figure(3)
+    subplot(4,1,1)
+    plot(t,y(:,1),'r');
+    grid;
+    title('Substrates and Nutrients');
+    ylabel('IC conc. (Kmol C/m3)');
+    xlabel('Time (d)');
+    
+    subplot(4,1,2)
+    plot(t,y(:,2),'r');
+    grid;
+    ylabel('H_2soluble (g COD/m3)');
+    xlabel('Time (d)');
+    
+    subplot(4,1,3)
+    plot(t,y(:,3),'r');
+    grid;
+    ylabel('IN conc. (g N/m3)');
+    xlabel('Time (d)');
+    
+    subplot(4,1,4)
+    plot(t,y(:,4),'r');
+    grid;
+    ylabel('IP conc. (g P/m3)');
+    xlabel('Time (d)');
+
+figure(4)
+    subplot(2,1,1)
+    plot(t,y(:,5),'r');
+    grid;
+    title('Particulates');
+    ylabel('XPB (g COD/m3)');
+    xlabel('Time (d)');
+    
+    subplot(2,1,2)
+    plot(t,y(:,6),'r');
+    grid;
+    ylabel('Xc (g COD/m3)');
+    xlabel('Time (d)');
+    
+% Calculations
+kLa_H2 = 28.7; %d-1; 70.4 at 600 rpm; 28.7 at 150 rpm
+R = 0.08314;
+T_base = 298.15;
+T = 273.15+22;
+P_atm = 1.013;
+K_H_h2_base = 0.00078;
+P_gas_H2 = y(:,7).*R.*T;
+K_H_H2 = K_H_h2_base*exp(530*((1/T)-(1/T_base)));
+H2_sat = K_H_H2.*P_gas_H2.*16.*1000;
+Supply = kLa_H2.*(H2_sat-y(:,2));
+
+kM_H2_NIR = 2.21;   
+K_IC = 4.2e-4;
+K_H2 = 0.002;    
+K_IN = 0.02;
+K_IP = 0.081; 
+I_IN = y(:,3)./(K_IN + y(:,3));
+I_IP = y(:,4)./(K_IP + y(:,4));
+    
+Uptake = kM_H2_NIR.*(y(:,1)./(K_IC + y(:,1))).*(y(:,2)./(K_H2 + y(:,2)))...
+    .*y(:,5).*I_IN.*I_IP;
+
+figure(5)
+    subplot(2,1,1)
+    plot(t,Supply,'r');
+    grid;
+    title('Rates H_2');
+    ylabel('Supply (g COD/m3/d)');
+    xlabel('Time (d)');
+    
+    subplot(2,1,2)
+    plot(t,Uptake,'r');
+    grid;
+    ylabel('Uptake (g COD/m3/d)');
+    xlabel('Time (d)');
+    
+figure(6)
+    plot(t,Supply,'r');
+    grid;
+    ylabel('H_2 rates (g COD/m3/d)');
+    xlabel('Time (d)');
+    hold on
+    plot(t,Uptake,'b--');
+    legend('Supply','Uptake')
+    hold off
+
+figure(7)
+    plot(t,y(:,2),'r');
+    grid;
+    ylabel('H_2 (g COD/m3)');
+    xlabel('Time (d)');
+    hold on
+    plot(t,H2_sat,'b--');
+    legend('H_2soluble', 'H_2sat')
+    hold off
+  %% Save files
+ StateMatrix = y;
+ [yy,ts,pHs]=PPB_auto_pH(t(1),y(1,:),tu,feed,Vliq,Vgas);
+ 
+ figure(8)
+     plot(data_exp_pH(:,1),data_exp_pH(:,2),'o')
+     hold on;
+     plot(ts,pHs,'r');
+     hold off;
+     grid;
+     title('Environmental factors and flow rate');
+     ylabel('pH');
+     xlabel('Time (d)');
+     ylim([4 11]);  
