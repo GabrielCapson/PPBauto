@@ -1,0 +1,164 @@
+%% PPB autotrophic model
+
+%% Function (biochemical model)
+
+function [dydt,tout,pHout] = PPB_auto_pH(t,y,tu,u,Vliq,Vgas)
+% Organise the input so that it can handle the time steppin
+% via interpolation of flowrates according to time steps
+    u = interp1(tu,u,t);
+
+    persistent t_list pH_list
+    if t==0
+        clear tlist pHlist
+    end
+    t_list = [t_list;t];
+
+%%  State variables
+
+    % Soluble Components
+    SIC = y(1);            % molHCO3-C/L
+    SH2 = y(2);            % mgCOD/L
+    SIN = y(3);            % mgNH3-N/L
+    SIP = y(4);            % mgPO4-P/L
+    % Particulate Components
+    XPB = y(5);            % mgCOD/L     
+    XC = y(6);             % mgCOD/L
+    % Gas
+    H2_gas = y(7);         % mol H2/L
+    CO2_gas = y(8);        % mol C/L
+    % pH
+    SHCO3_ = y(9);         % mol C/L
+    SNH3 = y(10);          % mg N/L
+    SH2PO4_ = y(11);       % mg P/L
+
+%%  Parameters
+% Stoichiometry        
+    % Autotrophic uptake H2
+    f_IC_au = 1.0/40320;                    % molHCO3-C/mgCOD
+    f_H2_au = 1;                            % mgCOD/mgCOD
+    Y_PB_au = 1;                             % mgCOD/mgCOD
+       
+% Kinetic parameters
+    % Specific uptake rates (Monod) and 1st order rates
+    kM_H2_NIR = 2.21;                 % d-1 Cal 1.30 (600)
+    kDEC_PB = 0.09;                  % d-1 (Puyol);
+   
+    % Half saturation constants 
+    K_IC = 4.2e-4;                   % mol HCO3-C/L (Puyol 2017)
+    K_H2 = 0.002;                     % mg COD/L Cal 0.10 (600)
+    
+% Inhibition constants
+     K_IN = 0.02;                     % mg NH3-N/L (Puyol 2017)
+     K_IP = 0.081;                    % mg PO4-P/L (Puyol 2017)            
+    
+%% C, N, P contents and stoichiometric coefficients
+
+% N contents
+N_X_PB = 0.0786; % mg N/mg COD Calibrated ePaNM
+%N_Xc = N_X_PB;
+
+% P contents
+P_X_PB = 0.0122; % mg P/mg COD Calibrated ePaNM
+%P_Xc = P_X_PB;
+
+% Stoichiometric coefficients C, N, P balances
+v3_1 = -Y_PB_au*N_X_PB;
+v4_1 = -Y_PB_au*P_X_PB;
+        
+%% pH calculation (as in ADM1)
+
+     SCAT = 0.21; %0.07 Metallic cations
+     SAN = 0.10;  %0.0001 Metallic anions
+%     % Acid-base rates
+      k_A_Bco2 = 1e8; %ADM1; 1e10 according to STR
+      k_A_BIP = 1e8; %ADM1; 1e10 according to STR
+      k_A_BIN = 1e8; %ADM1; 1e10 according to STR
+%      k_A_BIS = 1e8; %ADM1; 1e10 according to STR
+%      % Temperature correction
+      R = 0.08314;
+      T_base = 298.15;
+      T = 273.15+22;
+      factor = (1.0/T_base - 1.0/(T+273.15))/(100.0*R);
+%      % Acid-base equilibrium constants
+     pK_w_base    = 14.0;
+     pK_a_co2_base= 6.35;
+     pK_a_IN_base = 9.25;
+     pK_a_IP_base = 7.21;
+      K_a_CO2 = 10^(-pK_a_co2_base)*exp(7674*factor);
+      K_a_NH4 = 10^(-pK_a_IN_base)*exp(51965*factor);
+      K_a_H2PO4 = 10^(-pK_a_IP_base)*exp(30840*factor); % Check (1302.5 and 1298.7 deltaH H2PO4 and HPO4) (H3PO4 1271.66)
+      K_w = 10^(-pK_w_base)*exp(55900*factor);
+     % pH calculation
+     phi = SCAT + (SIN-SNH3)/14000 - SHCO3_ - SH2PO4_/30973 - SAN;
+     S_H_ion = -phi*0.5+0.5*sqrt(phi*phi+4.0*K_w);
+     %S_H_ion = 10^-7;
+     pHout = -log10(S_H_ion);
+ 
+     pH_list = [pH_list;pHout]; 
+    
+%% Gas transfer
+    % H2 
+    K_H_h2_base = 0.00078; %(mol/L/bar)
+    kLa_H2 = 28.7; %d-1 28.7 (150); 70.4 (600)
+    P_gas_H2 = H2_gas*R*T; %bar
+    K_H_H2 = K_H_h2_base*exp(530*((1/T)-(1/T_base)));
+    H2_sat = K_H_H2*P_gas_H2*16*1000;
+    % CO2
+    K_H_co2_base = 0.035/1.013; %(mol/L/bar)
+    kLa_CO2 = 17.1; %d-1 17.1 (150); 41.9 (600)
+    P_gas_co2 = CO2_gas*R*T;
+    K_H_co2 = K_H_co2_base*exp(-19410.0*factor);
+    CO2_sat = K_H_co2*P_gas_co2;
+       
+    %% Inhibition equations
+    % Inorg N limitation
+    I_IN = SIN/(K_IN + SIN);
+    % Inorg P limitation
+    I_IP = SIP/(K_IP + SIP);
+%     
+%%  % --------------------- RATE EQUATIONS ----------------------------
+   
+    % AUTOTROPHIC UPTAKE OF H2 BY PPB
+    r1 = kM_H2_NIR*(SIC/(K_IC + SIC))*(SH2/(K_H2 + SH2))*XPB...
+        *I_IN*I_IP;
+    % BIOMASS DECAY
+    r2 = kDEC_PB*XPB;
+    % H2 SUPPLY
+    rH2 = kLa_H2*(H2_sat-SH2); %mg COD/L/d   
+    % CO2 losses (Na2CO3 used as C source)
+    rCO2 = kLa_CO2*((SIC-SHCO3_)-CO2_sat);
+    %pH calculation
+    procA_C = k_A_Bco2*(SHCO3_*(K_a_CO2+S_H_ion)-K_a_CO2*SIC);
+    procA_N = k_A_BIN*(SNH3*(K_a_NH4+S_H_ion)-K_a_NH4*SIN);
+    procA_P = k_A_BIP*(SH2PO4_*(K_a_H2PO4+S_H_ion)-K_a_H2PO4*SIP);
+    
+    %% STATE VARIABLES
+   
+    dydt(1) = u(8)/Vliq * (u(1)-SIC) + r1*(-f_IC_au) - rCO2;                     % SIC
+    
+    dydt(2) = u(8)/Vliq * (u(2)-SH2) + rH2 + r1*(-f_H2_au);                      % SH2                                      
+
+    dydt(3) = u(8)/Vliq * (u(3)-SIN) + r1*v3_1;                                  % SIN
+        
+    dydt(4) = u(8)/Vliq * (u(4)-SIP) + r1*v4_1;                                  % SIP
+      
+    dydt(5) = u(8)/Vliq * (u(5)-XPB) + r1*Y_PB_au - r2;                          % XPB
+    
+    dydt(6) = u(8)/Vliq * (u(6)-XC) + r2;                                        % XC
+
+    dydt(7) = u(9)*u(10)/Vgas - u(11)*H2_gas/Vgas - rH2*Vliq/Vgas/1000/16;       % H2
+
+    % IC supplied as CO32-; if supplied as H2, eq. as dydt(7)
+    dydt(8) = rCO2*Vliq/Vgas;                                                    % CO2 
+    
+    dydt(9) = -procA_C;                                                          % SHCO3- 
+    dydt(10) = -procA_N;                                                         % SNH3 
+    dydt(11) = -procA_P;                                                         % SH2PO4_
+
+dydt = dydt';
+        
+   if nargout > 1
+       pHout = pH_list(1:(end-1),:);
+       tout = t_list(1:(end-1),:);
+   end
+end
